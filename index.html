@@ -1,201 +1,436 @@
-<!--
-  Rui Santos
-  Complete project details at https://RandomNerdTutorials.com/esp32-web-bluetooth/
-
-  Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files.
-  The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
--->
-
 <!DOCTYPE html>
-<html>
-<head>
-    <title>ESP32 Web BLE App</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link rel="icon" type="image/png" href="">
-</head>
-<body>
-  <h1>ESP32 Web BLE Application</h1>
-  <button id="connectBleButton">Connect to BLE Device</button>
-  <button id="disconnectBleButton">Disconnect BLE Device</button>
-  <p>BLE state: <strong><span id="bleState" style="color:#d13a30;">Disconnected</span></strong></p>
-  <h2>Fetched Value</h2>
-  <p><span id="valueContainer">NaN</span></p>
-  <p>Last reading: <span id="timestamp"></span></p>
-  <h2>Control GPIO 2</h2>
-  <button id="onButton">ON</button>
-  <button id="offButton">OFF</button>
-  <p>Last value sent: <span id="valueSent"></span></p>
-  <p><a href="https://randomnerdtutorials.com/">Created by RandomNerdTutorials.com</a></p>
-  <p><a href="https://RandomNerdTutorials.com/esp32-web-bluetooth/">Read the full project here.</a></p>
-</body>
-<script>
-    // DOM Elements
-    const connectButton = document.getElementById('connectBleButton');
-    const disconnectButton = document.getElementById('disconnectBleButton');
-    const onButton = document.getElementById('onButton');
-    const offButton = document.getElementById('offButton');
-    const retrievedValue = document.getElementById('valueContainer');
-    const latestValueSent = document.getElementById('valueSent');
-    const bleStateContainer = document.getElementById('bleState');
-    const timestampContainer = document.getElementById('timestamp');
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ESP32 LED Controller - Januar</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
 
-    //Define BLE Device Specs
-    var deviceName ='ESP32-Januar';
-    var bleService = 'c0fbfe47-def8-4a4e-b5d6-1eadcf675784';
-    var ledCharacteristic = 'c0fbfe48-def8-4a4e-b5d6-1eadcf675784';
-    var sensorCharacteristic= 'c0fbfe49-def8-4a4e-b5d6-1eadcf675784';
+      body {
+        font-family: "Arial", sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        padding: 20px;
+      }
 
-    //Global Variables to Handle Bluetooth
-    var bleServer;
-    var bleServiceFound;
-    var sensorCharacteristicFound;
+      .container {
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(10px);
+        border-radius: 20px;
+        padding: 40px;
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+        text-align: center;
+        max-width: 400px;
+        width: 100%;
+        animation: fadeInUp 0.6s ease;
+      }
 
-    // Connect Button (search for BLE Devices only if BLE is available)
-    connectButton.addEventListener('click', (event) => {
-        if (isWebBluetoothEnabled()){
-            connectToDevice();
+      @keyframes fadeInUp {
+        from {
+          opacity: 0;
+          transform: translateY(30px);
         }
-    });
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
 
-    // Disconnect Button
-    disconnectButton.addEventListener('click', disconnectDevice);
+      h1 {
+        color: #333;
+        margin-bottom: 30px;
+        font-size: 24px;
+        font-weight: bold;
+      }
 
-    // Write to the ESP32 LED Characteristic
-    onButton.addEventListener('click', () => writeOnCharacteristic(1));
-    offButton.addEventListener('click', () => writeOnCharacteristic(0));
+      .status {
+        background: #f8f9fa;
+        border-radius: 12px;
+        padding: 15px;
+        margin-bottom: 30px;
+        border-left: 4px solid #dc3545;
+      }
 
-    // Check if BLE is available in your Browser
-    function isWebBluetoothEnabled() {
+      .status.connected {
+        border-left-color: #28a745;
+      }
+
+      #bleState {
+        font-weight: bold;
+        font-size: 16px;
+      }
+
+      .btn {
+        background: linear-gradient(45deg, #667eea, #764ba2);
+        color: white;
+        border: none;
+        padding: 15px 30px;
+        border-radius: 12px;
+        cursor: pointer;
+        font-size: 16px;
+        font-weight: bold;
+        margin: 8px;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+        min-width: 120px;
+      }
+
+      .btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+      }
+
+      .btn:active {
+        transform: translateY(0);
+      }
+
+      .btn:disabled {
+        background: #ccc;
+        cursor: not-allowed;
+        transform: none;
+        box-shadow: none;
+      }
+
+      .btn-connect {
+        background: linear-gradient(45deg, #28a745, #20c997);
+      }
+
+      .btn-disconnect {
+        background: linear-gradient(45deg, #dc3545, #fd7e14);
+      }
+
+      .btn-on {
+        background: linear-gradient(45deg, #28a745, #20c997);
+      }
+
+      .btn-off {
+        background: linear-gradient(45deg, #dc3545, #fd7e14);
+      }
+
+      .led-controls {
+        margin-top: 30px;
+        padding-top: 30px;
+        border-top: 1px solid #eee;
+      }
+
+      .led-status {
+        margin-top: 20px;
+        padding: 10px;
+        background: #f8f9fa;
+        border-radius: 8px;
+        font-size: 14px;
+        color: #666;
+      }
+
+      .connection-buttons {
+        display: flex;
+        gap: 10px;
+        justify-content: center;
+        margin-bottom: 20px;
+      }
+
+      .led-buttons {
+        display: flex;
+        gap: 10px;
+        justify-content: center;
+        margin-top: 15px;
+      }
+
+      h2 {
+        color: #333;
+        font-size: 18px;
+        margin-bottom: 15px;
+      }
+
+      .info {
+        color: #666;
+        font-size: 12px;
+        margin-top: 20px;
+        line-height: 1.4;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>🔌 ESP32 LED Controller</h1>
+
+      <div class="status" id="statusContainer">
+        <div>
+          Status: <span id="bleState" style="color: #dc3545">Disconnected</span>
+        </div>
+      </div>
+
+      <div class="connection-buttons">
+        <button class="btn btn-connect" id="connectBleButton">Connect</button>
+        <button class="btn btn-disconnect" id="disconnectBleButton" disabled>
+          Disconnect
+        </button>
+      </div>
+
+      <div class="led-controls">
+        <h2>💡 LED Control</h2>
+        <div class="led-buttons">
+          <button class="btn btn-on" id="onButton" disabled>ON</button>
+          <button class="btn btn-off" id="offButton" disabled>OFF</button>
+        </div>
+
+        <div class="led-status">
+          Status LED: <span id="ledStatus">Unknown</span>
+        </div>
+      </div>
+
+      <div class="info">
+        Device: ESP32Januar<br />
+        UUID: c0fbfe47-def8-4a4e-b5d6-1eadcf675784
+      </div>
+    </div>
+
+    <script>
+      // DOM Elements
+      const connectButton = document.getElementById("connectBleButton");
+      const disconnectButton = document.getElementById("disconnectBleButton");
+      const onButton = document.getElementById("onButton");
+      const offButton = document.getElementById("offButton");
+      const bleStateContainer = document.getElementById("bleState");
+      const statusContainer = document.getElementById("statusContainer");
+      const ledStatus = document.getElementById("ledStatus");
+
+      // Device Configuration
+      const deviceName = "ESP32Januar";
+      const bleService = "c0fbfe47-def8-4a4e-b5d6-1eadcf675784";
+      // Biasanya LED characteristic berbeda dari service UUID
+      // Coba beberapa kemungkinan UUID characteristic
+      const ledCharacteristic = "c0fbfe47-def8-4a4e-b5d6-1eadcf675784"; // UUID + 1
+      const ledCharacteristicAlt = "c0fbfe47-def8-4a4e-b5d6-1eadcf675784"; // UUID yang sama
+
+      // Global Variables
+      let bleServer;
+      let bleServiceFound;
+      let ledCharacteristicFound;
+
+      // Event Listeners
+      connectButton.addEventListener("click", () => {
+        if (isWebBluetoothEnabled()) {
+          connectToDevice();
+        }
+      });
+
+      disconnectButton.addEventListener("click", disconnectDevice);
+      onButton.addEventListener("click", () => writeToLED(1));
+      offButton.addEventListener("click", () => writeToLED(0));
+
+      // Check Web Bluetooth Support
+      function isWebBluetoothEnabled() {
         if (!navigator.bluetooth) {
-            console.log("Web Bluetooth API is not available in this browser!");
-            bleStateContainer.innerHTML = "Web Bluetooth API is not available in this browser!";
-            return false
+          alert("Web Bluetooth tidak didukung di browser ini!");
+          bleStateContainer.innerHTML = "Web Bluetooth tidak didukung";
+          return false;
         }
-        console.log('Web Bluetooth API supported in this browser.');
-        return true
-    }
+        return true;
+      }
 
-    // Connect to BLE Device and Enable Notifications
-    function connectToDevice(){
-        console.log('Initializing Bluetooth...');
-        navigator.bluetooth.requestDevice({
-            filters: [{name: deviceName}],
-            optionalServices: [bleService]
-        })
-        .then(device => {
-            console.log('Device Selected:', device.name);
-            bleStateContainer.innerHTML = 'Connected to device ' + device.name;
-            bleStateContainer.style.color = "#24af37";
-            device.addEventListener('gattservicedisconnected', onDisconnected);
+      // Connect to ESP32
+      function connectToDevice() {
+        console.log("Mencari ESP32...");
+        updateStatus("Connecting...", "#ffc107");
+
+        navigator.bluetooth
+          .requestDevice({
+            filters: [{ name: deviceName }],
+            optionalServices: [bleService],
+          })
+          .then((device) => {
+            console.log("Device found:", device.name);
+            device.addEventListener("gattserverdisconnected", onDisconnected);
             return device.gatt.connect();
-        })
-        .then(gattServer =>{
+          })
+          .then((gattServer) => {
             bleServer = gattServer;
             console.log("Connected to GATT Server");
             return bleServer.getPrimaryService(bleService);
-        })
-        .then(service => {
+          })
+          .then((service) => {
             bleServiceFound = service;
-            console.log("Service discovered:", service.uuid);
-            return service.getCharacteristic(sensorCharacteristic);
-        })
-        .then(characteristic => {
-            console.log("Characteristic discovered:", characteristic.uuid);
-            sensorCharacteristicFound = characteristic;
-            characteristic.addEventListener('characteristicvaluechanged', handleCharacteristicChange);
-            characteristic.startNotifications();
-            console.log("Notifications Started.");
-            return characteristic.readValue();
-        })
-        .then(value => {
-            console.log("Read value: ", value);
-            const decodedValue = new TextDecoder().decode(value);
-            console.log("Decoded value: ", decodedValue);
-            retrievedValue.innerHTML = decodedValue;
-        })
-        .catch(error => {
-            console.log('Error: ', error);
-        })
-    }
+            console.log("Service found:", service.uuid);
 
-    function onDisconnected(event){
-        console.log('Device Disconnected:', event.target.device.name);
-        bleStateContainer.innerHTML = "Device disconnected";
-        bleStateContainer.style.color = "#d13a30";
-
-        connectToDevice();
-    }
-
-    function handleCharacteristicChange(event){
-        const newValueReceived = new TextDecoder().decode(event.target.value);
-        console.log("Characteristic value changed: ", newValueReceived);
-        retrievedValue.innerHTML = newValueReceived;
-        timestampContainer.innerHTML = getDateTime();
-    }
-
-    function writeOnCharacteristic(value){
-        if (bleServer && bleServer.connected) {
-            bleServiceFound.getCharacteristic(ledCharacteristic)
-            .then(characteristic => {
-                console.log("Found the LED characteristic: ", characteristic.uuid);
-                const data = new Uint8Array([value]);
-                return characteristic.writeValue(data);
-            })
-            .then(() => {
-                latestValueSent.innerHTML = value;
-                console.log("Value written to LEDcharacteristic:", value);
-            })
-            .catch(error => {
-                console.error("Error writing to the LED characteristic: ", error);
+            // Coba dapatkan semua characteristics yang tersedia
+            return service.getCharacteristics();
+          })
+          .then((characteristics) => {
+            console.log("Available characteristics:");
+            characteristics.forEach((char) => {
+              console.log("- UUID:", char.uuid);
+              console.log("- Properties:", char.properties);
             });
-        } else {
-            console.error ("Bluetooth is not connected. Cannot write to characteristic.")
-            window.alert("Bluetooth is not connected. Cannot write to characteristic. \n Connect to BLE first!")
-        }
-    }
 
-    function disconnectDevice() {
-        console.log("Disconnect Device.");
-        if (bleServer && bleServer.connected) {
-            if (sensorCharacteristicFound) {
-                sensorCharacteristicFound.stopNotifications()
-                    .then(() => {
-                        console.log("Notifications Stopped");
-                        return bleServer.disconnect();
-                    })
-                    .then(() => {
-                        console.log("Device Disconnected");
-                        bleStateContainer.innerHTML = "Device Disconnected";
-                        bleStateContainer.style.color = "#d13a30";
+            // Coba cari characteristic untuk LED (biasanya yang bisa di-write)
+            let ledChar = characteristics.find(
+              (char) =>
+                char.properties.write || char.properties.writeWithoutResponse
+            );
 
-                    })
-                    .catch(error => {
-                        console.log("An error occurred:", error);
-                    });
-            } else {
-                console.log("No characteristic found to disconnect.");
+            if (!ledChar) {
+              // Jika tidak ada yang bisa write, ambil yang pertama
+              ledChar = characteristics[0];
             }
-        } else {
-            // Throw an error if Bluetooth is not connected
-            console.error("Bluetooth is not connected.");
-            window.alert("Bluetooth is not connected.")
+
+            if (!ledChar) {
+              throw new Error("No suitable characteristic found");
+            }
+
+            ledCharacteristicFound = ledChar;
+            console.log("Using LED Characteristic:", ledChar.uuid);
+            console.log("Characteristic properties:", ledChar.properties);
+
+            updateStatus("Connected", "#28a745");
+            updateButtons(true);
+            ledStatus.textContent = "Ready";
+          })
+          .catch((error) => {
+            console.error("Connection error:", error);
+            updateStatus("Connection Failed", "#dc3545");
+            alert("Gagal terhubung ke ESP32. Pastikan device sudah aktif!");
+          });
+      }
+
+      // Handle Disconnection
+      function onDisconnected(event) {
+        console.log("Device disconnected");
+        updateStatus("Disconnected", "#dc3545");
+        updateButtons(false);
+        ledStatus.textContent = "Unknown";
+      }
+
+      // Write to LED Characteristic
+      function writeToLED(value) {
+        console.log("Attempting to write LED value:", value);
+
+        if (!bleServer || !bleServer.connected) {
+          alert("ESP32 belum terhubung!");
+          return;
         }
-    }
 
-    function getDateTime() {
-        var currentdate = new Date();
-        var day = ("00" + currentdate.getDate()).slice(-2); // Convert day to string and slice
-        var month = ("00" + (currentdate.getMonth() + 1)).slice(-2);
-        var year = currentdate.getFullYear();
-        var hours = ("00" + currentdate.getHours()).slice(-2);
-        var minutes = ("00" + currentdate.getMinutes()).slice(-2);
-        var seconds = ("00" + currentdate.getSeconds()).slice(-2);
+        if (!ledCharacteristicFound) {
+          alert("LED characteristic tidak ditemukan!");
+          return;
+        }
 
-        var datetime = day + "/" + month + "/" + year + " at " + hours + ":" + minutes + ":" + seconds;
-        return datetime;
-    }
+        try {
+          // Coba beberapa format data
+          let dataToSend;
 
+          if (ledCharacteristicFound.properties.writeWithoutResponse) {
+            // Gunakan writeWithoutResponse jika tersedia
+            console.log("Using writeValueWithoutResponse");
+            dataToSend = new Uint8Array([value]);
 
-</script>
+            ledCharacteristicFound
+              .writeValueWithoutResponse(dataToSend)
+              .then(() => {
+                console.log("LED command sent successfully:", value);
+                ledStatus.textContent = value ? "ON ✅" : "OFF ❌";
+                ledStatus.style.color = value ? "#28a745" : "#dc3545";
+              })
+              .catch((error) => {
+                console.error("Error with writeValueWithoutResponse:", error);
+                // Fallback ke writeValue
+                tryWriteValue(value);
+              });
+          } else if (ledCharacteristicFound.properties.write) {
+            // Gunakan write biasa
+            tryWriteValue(value);
+          } else {
+            alert("Characteristic tidak mendukung write operation!");
+            console.error(
+              "Characteristic properties:",
+              ledCharacteristicFound.properties
+            );
+          }
+        } catch (error) {
+          console.error("Error in writeToLED:", error);
+          alert("Error mengirim command: " + error.message);
+        }
+      }
 
+      function tryWriteValue(value) {
+        console.log("Using writeValue");
+        const dataToSend = new Uint8Array([value]);
+
+        ledCharacteristicFound
+          .writeValue(dataToSend)
+          .then(() => {
+            console.log("LED command sent successfully:", value);
+            ledStatus.textContent = value ? "ON ✅" : "OFF ❌";
+            ledStatus.style.color = value ? "#28a745" : "#dc3545";
+          })
+          .catch((error) => {
+            console.error("Error with writeValue:", error);
+            alert("Gagal mengirim perintah ke LED: " + error.message);
+
+            // Coba format data alternatif
+            console.log("Trying alternative data formats...");
+            tryAlternativeFormats(value);
+          });
+      }
+
+      function tryAlternativeFormats(value) {
+        // Coba format string
+        const stringData = new TextEncoder().encode(value.toString());
+
+        ledCharacteristicFound
+          .writeValue(stringData)
+          .then(() => {
+            console.log("LED command sent with string format:", value);
+            ledStatus.textContent = value ? "ON ✅" : "OFF ❌";
+            ledStatus.style.color = value ? "#28a745" : "#dc3545";
+          })
+          .catch((error) => {
+            console.error("All write methods failed:", error);
+            alert("Semua metode pengiriman gagal. Periksa ESP32 code!");
+          });
+      }
+
+      // Disconnect Device
+      function disconnectDevice() {
+        if (bleServer && bleServer.connected) {
+          bleServer.disconnect();
+          updateStatus("Disconnected", "#dc3545");
+          updateButtons(false);
+          ledStatus.textContent = "Unknown";
+          console.log("Device disconnected manually");
+        }
+      }
+
+      // Update Connection Status
+      function updateStatus(status, color) {
+        bleStateContainer.textContent = status;
+        bleStateContainer.style.color = color;
+
+        if (status === "Connected") {
+          statusContainer.classList.add("connected");
+        } else {
+          statusContainer.classList.remove("connected");
+        }
+      }
+
+      // Update Button States
+      function updateButtons(connected) {
+        connectButton.disabled = connected;
+        disconnectButton.disabled = !connected;
+        onButton.disabled = !connected;
+        offButton.disabled = !connected;
+      }
+
+      // Initialize page
+      updateButtons(false);
+    </script>
+  </body>
 </html>
